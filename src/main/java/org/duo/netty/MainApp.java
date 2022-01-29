@@ -3,6 +3,8 @@ package org.duo.netty;
 import io.netty.buffer.*;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.CharsetUtil;
 import org.junit.Test;
@@ -91,8 +93,49 @@ public class MainApp {
         sync.channel().closeFuture().sync();
         System.out.println("client over......");
     }
+
+    @Test
+    public void serverMode() throws IOException, InterruptedException {
+
+        // 相当于多路复用器
+        NioEventLoopGroup thread = new NioEventLoopGroup(1);
+        // 相当于server socket channel
+        NioServerSocketChannel serverSocketChannel = new NioServerSocketChannel();
+        // 将listen注册到eventLoop中，也就是将server socket channel注册到selector中
+        thread.register(serverSocketChannel);
+        ChannelFuture bind = serverSocketChannel.bind(new InetSocketAddress("192.168.56.1", 9090));
+        ChannelPipeline pipeline = serverSocketChannel.pipeline();
+        pipeline.addLast(new AcceptHandler(thread, new InputHandler())); //accept接受客户端，并且注册到selector中
+        bind.sync().channel().closeFuture().sync();
+    }
+
 }
 
+class AcceptHandler extends ChannelInboundHandlerAdapter {
+
+    EventLoopGroup selector;
+    ChannelHandler inputHandler;
+
+    public AcceptHandler(EventLoopGroup thread, ChannelHandler inputHandler) {
+        this.selector = thread;
+        this.inputHandler = inputHandler;
+    }
+
+    @Override
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        System.out.println("server registered......");
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        SocketChannel client = (SocketChannel) msg; // accept
+        selector.register(client);
+        ChannelPipeline pipeline = client.pipeline();
+        pipeline.addLast(inputHandler);
+    }
+}
+
+@ChannelHandler.Sharable
 class InputHandler extends ChannelInboundHandlerAdapter {
 
     @Override
