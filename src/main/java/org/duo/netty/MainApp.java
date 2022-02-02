@@ -1,8 +1,11 @@
 package org.duo.netty;
 
+import io.netty.bootstrap.Bootstrap;
+import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.*;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -105,7 +108,49 @@ public class MainApp {
         thread.register(serverSocketChannel);
         ChannelFuture bind = serverSocketChannel.bind(new InetSocketAddress("192.168.56.1", 9090));
         ChannelPipeline pipeline = serverSocketChannel.pipeline();
-        pipeline.addLast(new AcceptHandler(thread, new InputHandler())); //accept接受客户端，并且注册到selector中
+        pipeline.addLast(new AcceptHandler(thread, new ChannelInit())); //accept接受客户端，并且注册到selector中
+        bind.sync().channel().closeFuture().sync();
+    }
+
+    @Test
+    public void nettyClient() throws InterruptedException {
+
+        NioEventLoopGroup group = new NioEventLoopGroup(1);
+        Bootstrap bootstrap = new Bootstrap();
+        ChannelFuture connect = bootstrap.group(group)
+                .channel(NioSocketChannel.class)
+//                .handler(new ChannelInit())
+                .handler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) throws Exception {
+                        ChannelPipeline pipeline = ch.pipeline();
+                        pipeline.addLast(new InputHandler());
+                    }
+                })
+                .connect(new InetSocketAddress("192.168.56.112", 9090));
+        Channel client = connect.sync().channel();
+        ByteBuf buf = Unpooled.copiedBuffer("hello world".getBytes());
+        ChannelFuture send = client.writeAndFlush(buf);
+        send.sync();
+        client.closeFuture().sync();
+    }
+
+    @Test
+    public void nettyServer() throws InterruptedException {
+
+        NioEventLoopGroup group = new NioEventLoopGroup(1);
+        ServerBootstrap serverBootstrap = new ServerBootstrap();
+        ChannelFuture bind = serverBootstrap.group(group, group)
+                .channel(NioServerSocketChannel.class)
+                .childHandler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) throws Exception {
+                        ChannelPipeline pipeline = ch.pipeline();
+                        pipeline.addLast(new InputHandler());
+                    }
+                })
+                .bind(new InetSocketAddress("192.168.56.1", 9090));
+
         bind.sync().channel().closeFuture().sync();
     }
 
@@ -129,13 +174,42 @@ class AcceptHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         SocketChannel client = (SocketChannel) msg; // accept
-        selector.register(client);
         ChannelPipeline pipeline = client.pipeline();
         pipeline.addLast(inputHandler);
+        // 将ChannelInit注册到selector中
+        selector.register(client);
     }
 }
 
+/**
+ * ChannelInit:
+ * 在AcceptHandler初始化的时候会传入一个初始化好的InputHandler，以后每次有客户端连接进来都会用的是同一个InputHandler
+ * 所以InputHandler必须加@ChannelHandler.Sharable注解，
+ * 由于全部client共享一个InputHandler，所以在InputHandler中就不能加入业务逻辑了（不能有成员变量，必须是无状态的）
+ * 但是实际在业务场景下，InputHandler一般都是需要加入业务逻辑的，比如统计客户端的平均处理耗时等。。。
+ * 所以会增加一个无状态的初始化handler，这个handler是Sharable并且无状态的，
+ * 客户端连接进来后会add这个Sharable到ChannelPipeline中，并且在注册事件中在初始化真正的业务handler，同样的将业务handler再add到ChannelPipeline中
+ */
 @ChannelHandler.Sharable
+class ChannelInit extends ChannelInboundHandlerAdapter {
+
+    /**
+     * 在ChannelInit被注册后，会初始化一个新的InputHandler然后add到ChannelPipeline中，
+     * ChannelInit的目的是为了让每个client都使用自定的handler，它自己本身没有作用，
+     * 所以在完成将每个客户端new出来的handler添加到pipeline后，可以remove掉ChannelInit
+     *
+     * @param ctx
+     * @throws Exception
+     */
+    @Override
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        Channel client = ctx.channel();
+        ChannelPipeline pipeline = client.pipeline();
+        pipeline.addLast(new InputHandler());
+        ctx.pipeline().remove(this);
+    }
+}
+
 class InputHandler extends ChannelInboundHandlerAdapter {
 
     @Override
