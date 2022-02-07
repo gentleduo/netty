@@ -8,35 +8,48 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.ByteToMessageDecoder;
 import org.junit.Test;
 
 import java.io.*;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class RpcApp {
 
     @Test
     public void startServer() {
 
-        NioEventLoopGroup boss = new NioEventLoopGroup(1);
+        BwmCar bwm = new BwmCar();
+        J20Fly j20 = new J20Fly();
+
+        Dispatcher dispatcher = new Dispatcher();
+        dispatcher.register(Car.class.getName(), bwm);
+        dispatcher.register(Fly.class.getName(), j20);
+
+        NioEventLoopGroup boss = new NioEventLoopGroup(50);
         NioEventLoopGroup worker = boss;
 
         ServerBootstrap serverBootstrap = new ServerBootstrap();
         ChannelFuture bind = serverBootstrap.group(boss, worker).channel(NioServerSocketChannel.class).childHandler(new ChannelInitializer<NioSocketChannel>() {
             @Override
             protected void initChannel(NioSocketChannel ch) throws Exception {
-
+                System.out.println("server accept client port : " + ch.remoteAddress().getPort());
                 ChannelPipeline p = ch.pipeline();
-                p.addLast(new ServerRequestHandler());
+                p.addLast(new ServerDecode());
+                p.addLast(new ServerRequestHandler(dispatcher));
             }
-        }).bind(new InetSocketAddress("localhost",9090));
+        }).bind(new InetSocketAddress("localhost", 9090));
 
         try {
             bind.sync().channel().closeFuture().sync();
@@ -49,16 +62,29 @@ public class RpcApp {
      * 模拟consumer端的实现
      */
     @Test
-    public void get() {
+    public void get() throws IOException {
 
-        new Thread(()->{
+        new Thread(() -> {
             startServer();
         }).start();
 
         System.out.println("server started......");
 
-        Car car = proxyGet(Car.class); //动态代理实现
-        car.drive("hello");
+//        Car car = proxyGet(Car.class); //动态代理实现
+//        car.drive("hello");
+
+        AtomicInteger num = new AtomicInteger(0);
+        for (int i = 0; i < 20; i++) {
+
+            new Thread(() -> {
+                Car car = proxyGet(Car.class); //动态代理实现
+                String arg = "hello" + num.incrementAndGet();
+                String res = car.drive(arg);
+                System.out.println("client over msg: " + res + " src arg " + arg);
+            }).start();
+        }
+
+        System.in.read();
     }
 
     public static <T> T proxyGet(Class<T> interfaceInfo) {
@@ -74,7 +100,7 @@ public class RpcApp {
                 String interfaceName = interfaceInfo.getName(); //接口名称，即：服务
                 String methodName = method.getName(); // 方法名称
                 Class<?>[] parameterTypes = method.getParameterTypes();
-                RequestContent body = new RequestContent();
+                Content body = new Content();
                 body.setInterfaceName(interfaceName);
                 body.setMethodName(methodName);
                 body.setParameterTypes(parameterTypes);
@@ -87,42 +113,32 @@ public class RpcApp {
 
                 //2.requestId + message 本地缓存
                 // 协议：[header : requestId bodyLength] [body]
-                RequestHeader header = CreateHeader(msgBody);
+                Header header = CreateHeader(msgBody);
                 byteArrayOutputStream.reset();
                 objectOutputStream = new ObjectOutputStream(byteArrayOutputStream);
                 objectOutputStream.writeObject(header);
                 byte[] msgHeader = byteArrayOutputStream.toByteArray();
-                System.out.println(msgHeader.length);
-
                 //3.连接池：取得连接
                 ClientFactory factory = ClientFactory.getFactory();
                 NioSocketChannel clientChannel = factory.getClient(new InetSocketAddress("localhost", 9090));
                 //4.发送 ==> IO
-                CountDownLatch countDownLatch = new CountDownLatch(1);
                 long id = header.getRequestId();
-                ResponseHandler.addCallBack(id, new Runnable() {
-                    @Override
-                    public void run() {
-                        countDownLatch.countDown();
-                    }
-                });
+                CompletableFuture<String> res = new CompletableFuture<>();
+                ResponseHandler.addCallBack(id, res);
                 ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(msgHeader.length + msgBody.length);
                 byteBuf.writeBytes(msgHeader);
                 byteBuf.writeBytes(msgBody);
                 ChannelFuture channelFuture = clientChannel.writeAndFlush(byteBuf);
                 channelFuture.sync();
 
-                //5.发送完成后，未来从客户端返回回来了，怎么再将代码从发送数据后接着执行(睡眠/回调，如何让线程停下来，而且还能让它继续)
-                countDownLatch.await();
-
-                return null;
+                return res.get();
             }
         });
     }
 
-    public static RequestHeader CreateHeader(byte[] msg) {
+    public static Header CreateHeader(byte[] msg) {
 
-        RequestHeader header = new RequestHeader();
+        Header header = new Header();
         int size = msg.length;
         int flag = 0x14141414;
         long requestId = Math.abs(UUID.randomUUID().getLeastSignificantBits());
@@ -134,29 +150,99 @@ public class RpcApp {
     }
 }
 
-class ServerRequestHandler extends ChannelInboundHandlerAdapter {
+class ServerDecode extends ByteToMessageDecoder {
+
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        ByteBuf buf = (ByteBuf) msg;
-        ByteBuf sendBuf = buf.copy();
-        if (buf.readableBytes() >= 104) {
-            byte[] bytes = new byte[104];
-            buf.readBytes(bytes);
+    protected void decode(ChannelHandlerContext ctx, ByteBuf buf, List<Object> out) throws Exception {
+        while (buf.readableBytes() >= 97) {
+            byte[] bytes = new byte[97];
+            //buf.readBytes(bytes);
+            buf.getBytes(buf.readerIndex(), bytes);//从哪里读，读多少，但是read index不变(指针不变)
             ByteArrayInputStream in = new ByteArrayInputStream(bytes);
             ObjectInputStream oin = new ObjectInputStream(in);
-            RequestHeader header = (RequestHeader) oin.readObject();
-            System.out.println("server response @ id: " + header.getRequestId());
-            if (buf.readableBytes() >= header.getDataLength()) {
+            Header header = (Header) oin.readObject();
+//            System.out.println("server response @ id: " + header.getRequestId());
+            // 通信协议
+            if (buf.readableBytes() >= 97 + header.getDataLength()) {
+                // 处理指针
+                buf.readBytes(97);//移动指针到body开始的位置，
                 byte[] data = new byte[(int) header.getDataLength()];
                 buf.readBytes(data);
                 ByteArrayInputStream din = new ByteArrayInputStream(data);
                 ObjectInputStream doin = new ObjectInputStream(din);
-                RequestContent content = (RequestContent) doin.readObject();
-                System.out.println(content.getInterfaceName());
+
+                if (header.getFlag() == 0x14141414) {
+                    Content content = (Content) doin.readObject();
+//                System.out.println(content.getInterfaceName());
+                    out.add(new Packmsg(header, content));
+                } else if (header.getFlag() == 0x14141424) {
+                    Content content = (Content) doin.readObject();
+//                System.out.println(content.getInterfaceName());
+                    out.add(new Packmsg(header, content));
+                }
+            } else {
+                break;
             }
         }
-        ChannelFuture channelFuture = ctx.writeAndFlush(sendBuf);
-        channelFuture.sync();
+    }
+}
+
+class ServerRequestHandler extends ChannelInboundHandlerAdapter {
+
+    Dispatcher dispatcher;
+
+    public ServerRequestHandler(Dispatcher dispatcher) {
+        this.dispatcher = dispatcher;
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
+        Packmsg buf = (Packmsg) msg;
+//        System.out.println("server handler : " + buf.content.getArgs()[0]);
+
+        String ioThreadName = Thread.currentThread().getName();
+        // 1.在当前IO线程中处理业务及返回
+        // 2.使用netty自己的eventloop来处理业务及返回
+        ctx.executor().execute(new Runnable() {
+            //        ctx.executor().parent().next().execute(new Runnable() {
+            @Override
+            public void run() {
+
+                String interfaceNm = buf.content.getInterfaceName();
+                String methodNm = buf.content.getMethodName();
+                Object c = dispatcher.get(interfaceNm);
+                Class<?> clazz = c.getClass();
+                Object res = null;
+                try {
+                    Method m = clazz.getMethod(methodNm, buf.content.parameterTypes);
+                    res = m.invoke(c, buf.content.getArgs());
+                } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                    e.printStackTrace();
+                }
+                String exeThreadName = Thread.currentThread().getName();
+                Header header = new Header();
+                Content content = new Content();
+//                System.out.println("io thread : " + ioThreadName + " exec thread : " + exeThreadName + " from args : " + buf.content.getArgs()[0]);
+//                content.setRes("io thread : " + ioThreadName + " exec thread : " + exeThreadName + " from args : " + buf.content.getArgs()[0]);
+//                System.out.println((String) res);
+                content.setRes((String) res);
+                byte[] contentByte = SerDerUtil.ser(content);
+
+                header.setRequestId(buf.header.getRequestId());
+                header.setFlag(0x14141424);
+                header.setDataLength(contentByte.length);
+                byte[] headerByte = SerDerUtil.ser(header);
+
+                ByteBuf bytebuf = PooledByteBufAllocator.DEFAULT.directBuffer(headerByte.length + contentByte.length);
+
+                bytebuf.writeBytes(headerByte);
+                bytebuf.writeBytes(contentByte);
+
+                ctx.writeAndFlush(bytebuf);
+            }
+        });
+
     }
 }
 
@@ -209,6 +295,7 @@ class ClientFactory {
             @Override
             protected void initChannel(NioSocketChannel ch) throws Exception {
                 ChannelPipeline p = ch.pipeline();
+                p.addLast(new ServerDecode());
                 p.addLast(new ClientResponse());
             }
         }).connect(address);
@@ -226,18 +313,18 @@ class ClientFactory {
 
 class ResponseHandler {
 
-    static ConcurrentHashMap<Long, Runnable> mapping = new ConcurrentHashMap<Long, Runnable>();
+    static ConcurrentHashMap<Long, CompletableFuture> mapping = new ConcurrentHashMap<Long, CompletableFuture>();
 
-    public static void addCallBack(long requestID, Runnable cb) {
+    public static void addCallBack(long requestID, CompletableFuture cb) {
 
         mapping.putIfAbsent(requestID, cb);
     }
 
-    public static void runCallBack(long requestID) {
+    public static void runCallBack(Packmsg packmsg) {
 
-        Runnable runnable = mapping.get(requestID);
-        runnable.run();
-        removeCB(requestID);
+        CompletableFuture runnable = mapping.get(packmsg.header.getRequestId());
+        runnable.complete(packmsg.getContent().getRes());
+        removeCB(packmsg.header.getRequestId());
     }
 
     private static void removeCB(long requestID) {
@@ -250,24 +337,9 @@ class ClientResponse extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        ByteBuf buf = (ByteBuf) msg;
-        if (buf.readableBytes() >= 104) {
-            byte[] bytes = new byte[104];
-            buf.readBytes(bytes);
-            ByteArrayInputStream in = new ByteArrayInputStream(bytes);
-            ObjectInputStream oin = new ObjectInputStream(in);
-            RequestHeader header = (RequestHeader) oin.readObject();
-            System.out.println("client response @ id: " + header.getRequestId());
-            ResponseHandler.runCallBack(header.getRequestId());
-//            if (buf.readableBytes() >= header.getDataLength()) {
-//                byte[] data = new byte[(int) header.getDataLength()];
-//                buf.readBytes(data);
-//                ByteArrayInputStream din = new ByteArrayInputStream(data);
-//                ObjectInputStream doin = new ObjectInputStream(din);
-//                RequestContent content = (RequestContent) doin.readObject();
-//                System.out.println(content.getInterfaceName());
-//            }
-        }
+
+        Packmsg buf = (Packmsg) msg;
+        ResponseHandler.runCallBack(buf);
     }
 }
 
@@ -285,7 +357,7 @@ class ClientPool {
     }
 }
 
-class RequestHeader implements Serializable {
+class Header implements Serializable {
 
     /**
      * 1 flag:协议类型
@@ -323,12 +395,21 @@ class RequestHeader implements Serializable {
 
 }
 
-class RequestContent implements Serializable {
+class Content implements Serializable {
 
     String interfaceName;
     String methodName;
     Class<?>[] parameterTypes;
     Object[] args;
+    String res;
+
+    public String getRes() {
+        return res;
+    }
+
+    public void setRes(String res) {
+        this.res = res;
+    }
 
     public String getInterfaceName() {
         return interfaceName;
@@ -364,11 +445,37 @@ class RequestContent implements Serializable {
 }
 
 interface Car {
-    public void drive(String msg);
+    public String drive(String msg);
 }
 
 interface Fly {
-    public void fly(String msg);
+    public String fly(String msg);
 
 }
 
+class BwmCar implements Car {
+    public String drive(String msg) {
+        System.out.println("Server,get client arg:" + msg);
+        return "server res " + msg;
+    }
+}
+
+class J20Fly implements Fly {
+    public String fly(String msg) {
+        System.out.println("Server,get client arg:" + msg);
+        return "server res " + msg;
+    }
+}
+
+class Dispatcher {
+
+    public static ConcurrentHashMap<String, Object> invokeMapping = new ConcurrentHashMap<>();
+
+    public void register(String k, Object obj) {
+        invokeMapping.put(k, obj);
+    }
+
+    public Object get(String k) {
+        return invokeMapping.get(k);
+    }
+}
