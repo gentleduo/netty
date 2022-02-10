@@ -16,6 +16,6 @@ public class GameMsgHandler extends SimpleChannelInboundHandler<Object> {
 
             return;
         }
-        LOGGER.info("收到客户端消息，msg = {}", msg);
+        LOGGER.info("收到客户端消息，msgClazz = {}, msgBody = {}", msg.getClass().getSimpleName(), msg);
     }
 }
