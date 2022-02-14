@@ -9,6 +9,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.duo.herostory.msg.GameMsgProtocol;
 
+/**
+ * 消息解码器
+ */
 public class GameMsgDecoder extends ChannelInboundHandlerAdapter {
 
     static private final Logger LOGGER = LoggerFactory.getLogger(GameMsgDecoder.class);
@@ -38,6 +41,12 @@ public class GameMsgDecoder extends ChannelInboundHandlerAdapter {
             switch (msgCode) {
                 case GameMsgProtocol.MsgCode.USER_ENTRY_CMD_VALUE:
                     cmd = GameMsgProtocol.UserEntryCmd.parseFrom(msgBody);
+                    break;
+                case GameMsgProtocol.MsgCode.WHO_ELSE_IS_HERE_CMD_VALUE:
+                    cmd = GameMsgProtocol.WhoElseIsHereCmd.parseFrom(msgBody);
+                    break;
+                case GameMsgProtocol.MsgCode.USER_MOVE_TO_CMD_VALUE:
+                    cmd = GameMsgProtocol.UserMoveToCmd.parseFrom(msgBody);
                     break;
                 default:
                     break;
