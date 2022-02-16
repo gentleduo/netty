@@ -77,22 +77,6 @@ public class GameMsgHandler extends SimpleChannelInboundHandler<Object> {
                 iCmdHandler.handle(ctx, cast(msg));
             }
 
-//            if (msg instanceof GameMsgProtocol.UserEntryCmd) {
-//
-//                // 用户入场
-//                GameMsgProtocol.UserEntryCmd cmd = (GameMsgProtocol.UserEntryCmd) msg;
-//                UserEntryCmdHandler userEntryCmdHandler = new UserEntryCmdHandler();
-//                userEntryCmdHandler.handle(ctx, cmd);
-//            } else if (msg instanceof GameMsgProtocol.WhoElseIsHereCmd) {
-//                // 还有谁在场
-//                WhoElseIsHereCmdHandler whoElseIsHereCmdHandler = new WhoElseIsHereCmdHandler();
-//                whoElseIsHereCmdHandler.handle(ctx, (GameMsgProtocol.WhoElseIsHereCmd) msg);
-//            } else if (msg instanceof GameMsgProtocol.UserMoveToCmd) {
-//                // 用户移动
-//                GameMsgProtocol.UserMoveToCmd cmd = (GameMsgProtocol.UserMoveToCmd) msg;
-//                UserMoveToCmdHandler userMoveToCmdHandler = new UserMoveToCmdHandler();
-//                userMoveToCmdHandler.handle(ctx, cmd);
-//            }
         } catch (Exception ex) {
             LOGGER.error(ex.getMessage(), ex);
         }
