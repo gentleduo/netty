@@ -80,6 +80,8 @@ public class EntityHelperFactory {
         Class<?> javaClazz = helperClazz.toClass();
         helperObj = (AbstractEntityHelper) javaClazz.newInstance();
 
+        // 将构造好的类写入文件
+        helperClazz.writeFile("D:\\intellij-workspace\\netty\\logs");
         _entityHelperMap.put(entityClass, helperObj);
         return helperObj;
     }
