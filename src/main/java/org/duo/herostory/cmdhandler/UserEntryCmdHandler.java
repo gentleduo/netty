@@ -3,8 +3,8 @@ package org.duo.herostory.cmdhandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.AttributeKey;
 import org.duo.herostory.Broadcaster;
-import org.duo.herostory.User;
-import org.duo.herostory.UserManager;
+import org.duo.herostory.model.User;
+import org.duo.herostory.model.UserManager;
 import org.duo.herostory.msg.GameMsgProtocol;
 
 public class UserEntryCmdHandler implements ICmdHandler<GameMsgProtocol.UserEntryCmd> {

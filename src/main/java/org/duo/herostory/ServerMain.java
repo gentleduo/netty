@@ -18,6 +18,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * http://cdn0001.afrxvk.cn/hero_story/demo/step010/index.html?serverAddr=127.0.0.1:12345&userId=1
+ * 重新设计移动消息后，由于前端消息结构变了，所以使用如下Url:
+ * http://cdn0001.afrxvk.cn/hero_story/demo/step020/index.html?serverAddr=127.0.0.1:12345&userId=1
+ * <p>
  * Protobuf 命令行工具
  * https://github.com/protocolbuffers/protobuf
  * 在releases页面中找到下载链接；

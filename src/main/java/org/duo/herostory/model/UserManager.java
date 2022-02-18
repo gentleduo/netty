@@ -1,7 +1,8 @@
-package org.duo.herostory;
+package org.duo.herostory.model;
+
+import org.duo.herostory.model.User;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -48,5 +49,14 @@ public final class UserManager {
      */
     public static Collection<User> listUser() {
         return _userMap.values();
+    }
+
+    /**
+     * 根据用户ID获取用户
+     *
+     * @return
+     */
+    static public User getByUserId(int userId) {
+        return _userMap.get(userId);
     }
 }

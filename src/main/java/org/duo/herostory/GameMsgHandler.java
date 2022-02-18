@@ -3,18 +3,12 @@ package org.duo.herostory;
 import com.google.protobuf.GeneratedMessageV3;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.channel.group.ChannelGroup;
-import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.AttributeKey;
-import io.netty.util.concurrent.GlobalEventExecutor;
 import org.duo.herostory.cmdhandler.*;
+import org.duo.herostory.model.UserManager;
 import org.duo.herostory.msg.GameMsgProtocol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 
 public class GameMsgHandler extends SimpleChannelInboundHandler<Object> {
 
@@ -41,6 +35,7 @@ public class GameMsgHandler extends SimpleChannelInboundHandler<Object> {
         }
         try {
             super.handlerRemoved(ctx);
+            Broadcaster.broadcast(ctx.channel());
 
             Integer userId = (Integer) ctx.channel().attr(AttributeKey.valueOf("userId")).get();
             if (userId == null) {
@@ -48,7 +43,6 @@ public class GameMsgHandler extends SimpleChannelInboundHandler<Object> {
             }
 
             UserManager.removeByUserId(userId);
-            Broadcaster.broadcast(ctx.channel());
 
             GameMsgProtocol.UserQuitResult.Builder resultBuilder = GameMsgProtocol.UserQuitResult.newBuilder();
             resultBuilder.setQuitUserId(userId);
