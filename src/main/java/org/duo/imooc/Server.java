@@ -43,8 +43,7 @@ public final class Server {
              * SelectorProvider是JDK底层的类，位于：java.nio.channels.spi包下
              * SelectorProvider的openServerSocketChannel方法中会创建JDK底层的channel：sun.nio.ch.ServerSocketChannelImpl对象
              * ServerSocketChannelImpl是ServerSocketChannel的子类
-             * 第二步：设置ServerSocketChannel的configureBlocking为false·
-             *
+             * 第二步：设置ServerSocketChannel的configureBlocking为false，初始化id、unsafe、pipeline
              * 第三步：NioServerSocketChannelConfig[tcp参数配置类]
              */
             ChannelFuture f = b.bind(8888).sync();
