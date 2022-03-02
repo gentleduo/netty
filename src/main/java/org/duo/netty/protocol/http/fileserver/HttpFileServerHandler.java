@@ -73,7 +73,7 @@ public class HttpFileServerHandler extends
             sendError(ctx, FORBIDDEN);
             return;
         }
-        // 如果是文件，设置content-type和content-length，使用netty的chunkedfile直接写到缓冲，异步的方式(在客户端的表现是出现开发/下载文件的提示)
+        // 返回文件链接响应给客户端的流程：
         RandomAccessFile randomAccessFile = null;
         try {
             randomAccessFile = new RandomAccessFile(file, "r");// 以只读的方式打开文件
@@ -83,16 +83,21 @@ public class HttpFileServerHandler extends
         }
         long fileLength = randomAccessFile.length();
         HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
+        // 根据文件长度，设置content-length
         HttpUtil.setContentLength(response, fileLength);
+        // 设置消息头
         setContentTypeHeader(response, file);
         // 如果是keepalived的，等待客户端主动关闭。
         if (HttpUtil.isKeepAlive(request)) {
             response.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
         }
+        // 发送响应消息
         ctx.write(response);
         ChannelFuture sendFileFuture;
+        // 通过Netty的ChunkedFile对象直接将文件写入发送缓冲区，
         sendFileFuture = ctx.write(new ChunkedFile(randomAccessFile, 0,
                 fileLength, 8192), ctx.newProgressivePromise());
+        // 为sendFileFuture增加ChannelProgressiveFutureListener，如果发送完成打印"Transfer complete."。
         sendFileFuture.addListener(new ChannelProgressiveFutureListener() {
             @Override
             public void operationProgressed(ChannelProgressiveFuture future,
@@ -111,9 +116,11 @@ public class HttpFileServerHandler extends
                 System.out.println("Transfer complete.");
             }
         });
+        // 如果使用chunked编码，最后需要发送一个编码结束的空消息体，将LastHttpContent.EMPTY_LAST_CONTENT发送到缓冲区中，标识所有的消息体已经发送完成，
+        // 同时调用flush方法将之前在发送缓冲区的消息刷新到SocketChannel中发送给对方。
         ChannelFuture lastContentFuture = ctx
                 .writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
-        // 如果是非keepalived的，服务器端主动关闭
+        // 如果是非keepalived的，最后一个包消息发送完成之后，服务器端要主动关闭连接。
         if (!HttpUtil.isKeepAlive(request)) {
             lastContentFuture.addListener(ChannelFutureListener.CLOSE);
         }
