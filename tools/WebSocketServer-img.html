@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Netty websocket 聊天室</title>
+</head>
+<body>
+<form action="" onsubmit="return false;">
+    <input type="text" name="message" value=""/>
+    <input type="file" name="file"/>
+    <br>
+    <input type="button" value="send" value="发送websocket请求消息" onclick="send(this.form.message.value);" />
+    <hr color="blue">
+    <h3>服务器返回信息</h3>
+    <textarea id="responseText" rows="10" cols=""></textarea>
+    <img src="" height="200" alt="Image preview area..." title="preview-img">
+</form>
+</body>
+
+<script type="text/javascript">
+    var socket;
+    if(!window.WebSocket){
+        window.WebSocket = window.MozWebSocket;
+    }
+    if(window.WebSocket){
+        socket = new WebSocket("ws://localhost:8080/websocket");
+        socket.onmessage = function(event){
+
+            var blob=event.data;
+            var previewImg = document.querySelector('img');
+
+            var reader = new FileReader();
+            // 监听reader对象的的onload事件，当图片加载完成时，把base64编码賦值给预览图片
+            reader.addEventListener("load", function () {
+                previewImg.src = reader.result;
+            }, false);
+            // 调用reader.readAsDataURL()方法，把图片转成base64
+            reader.readAsDataURL(blob);
+
+
+/*          var ta = document.getElementById('responseText');
+            ta.value="";
+            ta.value=event.data;*/
+        };
+        socket.onopen = function(event){
+            var ta = document.getElementById('responseText');
+            ta.value = "打开websocket服务正常";
+        }
+        socket.onclose = function(event){
+            var ta = document.getElementById('responseText');
+            ta.value="";
+            ta.value="websocket关闭";
+        }
+    }else{
+        alert("对不起，您的浏览器不支持WebSocket.");
+    }
+
+    function send(message){
+
+        var file = document.querySelector('input[type="file"]').files[0];
+
+        if(!window.WebSocket){
+            return ;
+        }
+        if(socket.readyState == WebSocket.OPEN){
+            socket.send(file);
+        }else{
+            alert("WebSocket 连接创建失败.");
+        }
+    }
+</script>
+</html>
