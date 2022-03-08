@@ -10,6 +10,12 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 消息的解码类：NettyMessageDecoder用到了Netty的LengthFieldBasedFrameDecoder解码器，它支持自动的TCP粘包和半包的处理，
+ * 只需要给出标识消息长度的字段的偏移量和消息长度自身所占的字节数，Netty就能自动实现对半包的处理。
+ * 对于业务解码器来说，调用父类LengthFieldBasedFrameDecoder的解码方法后，返回的就是整包消息或者为空。
+ * 如果为空则说明是个半包消息，直接返回继续由I/O线程读取后续的码流。
+ */
 public class NettyMessageDecoder extends LengthFieldBasedFrameDecoder {
 
     MarshallingDecoder marshallingDecoder;

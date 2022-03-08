@@ -11,6 +11,10 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 
+/**
+ * Marshalling编解码器支持半包和粘包的处理，
+ * 只需要正确地将Marshalling编码器和解码器加入到ChannelPipeline中，就能实现对Marshalling序列化的支持。
+ */
 public class SubReqServer {
     public void bind(int port) throws Exception {
         // 配置服务端的NIO线程组

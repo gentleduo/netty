@@ -1,10 +1,8 @@
 package org.duo.netty.codec.marshalling;
 
-import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
-@Sharable
 public class SubReqServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override

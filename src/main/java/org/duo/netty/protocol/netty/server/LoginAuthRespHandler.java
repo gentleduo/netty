@@ -19,7 +19,7 @@ public class LoginAuthRespHandler extends ChannelInboundHandlerAdapter {
     static private final Logger LOG = LoggerFactory.getLogger(LoginAuthRespHandler.class);
 
     private Map<String, Boolean> nodeCheck = new ConcurrentHashMap<String, Boolean>();
-    private String[] whitekList = {"127.0.0.1", "192.168.1.104"};
+    private String[] whitekList = {"127.0.0.1", "192.168.56.1"};
 
     /**
      * Calls {@link ChannelHandlerContext#fireChannelRead(Object)} to forward to
